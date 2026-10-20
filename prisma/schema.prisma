@@ -1,0 +1,182 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -------------------------------------------------------------
+// 1. Users & Profile Identity (Screens 1, 2, 10, 11)
+// -------------------------------------------------------------
+model User {
+  id             String    @id @default(uuid())
+  phoneNumber    String?   @unique
+  email          String?   @unique
+  displayName    String    // e.g., "Alex Rivera"
+  handle         String    @unique // e.g., "arivera_dev"
+  avatarUrl      String?   // Custom URL or avatar preset key
+  bio            String?   @default("Building real-time audio routing mesh in Rust & WebRTC.")
+  statusMessage  String?   @default("Online • Just joined")
+  isOnline       Boolean   @default(false)
+  lastSeenAt     DateTime  @default(now())
+
+  // Hardware / Auth Security (Screen 11)
+  sessionKeystore String? // Encrypted client key
+  authTokens      AuthSession[]
+
+  // Roles & Badges (Screen 10)
+  roles           UserRole[]
+
+  // Channel & Message Relationships (Screens 3, 4, 8)
+  messages        Message[]
+  channelsCreated Channel[]
+  channelMembers  ChannelMember[]
+  dmParticipants  DmParticipant[]
+
+  // Voice & Stage Activity (Screen 6)
+  voiceSessions   VoiceParticipant[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model AuthSession {
+  id         String   @id @default(uuid())
+  userId     String
+  tokenHash  String   @unique
+  deviceMeta String?  // OS, Push Token, Device ID
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserRole {
+  id          String  @id @default(uuid())
+  userId      String
+  title       String  // e.g. "Rust Guild Lead", "Early Node Contributor"
+  tag         String  // e.g. "ADMIN", "GENESIS", "BETA"
+  description String?
+  icon        String? // SVG name or icon identifier
+
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// -------------------------------------------------------------
+// 2. Channels & Messaging (Screens 3, 4, 5)
+// -------------------------------------------------------------
+enum ChannelType {
+  TEXT
+  VOICE_LOUNGE
+  STAGE_ROOM
+}
+
+model Channel {
+  id          String        @id @default(uuid())
+  name        String        // e.g., "general-dev", "backend-sprints"
+  topic       String?       // e.g., "Low-latency audio pipeline & async Rust discussion"
+  type        ChannelType   @default(TEXT)
+  isPrivate   Boolean       @default(false)
+  createdById String
+
+  createdBy   User          @relation(fields: [createdById], references: [id])
+  members     ChannelMember[]
+  messages    Message[]
+  voiceStage  VoiceRoom?
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model ChannelMember {
+  id        String   @id @default(uuid())
+  channelId String
+  userId    String
+  joinedAt  DateTime @default(now())
+
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  channelId   String?
+  dmGroupId   String?
+  senderId    String
+  content     String
+  isBot       Boolean  @default(false)
+  reactions   Json?    // e.g. {"clap": 24, "rocket": 18, "lightning": 15}
+  createdAt   DateTime @default(now())
+
+  channel     Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sender      User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+}
+
+// -------------------------------------------------------------
+// 3. Direct Messages (Screen 8)
+// -------------------------------------------------------------
+model DmConversation {
+  id           String          @id @default(uuid())
+  isGroup      Boolean         @default(false)
+  createdAt    DateTime        @default(now())
+
+  participants DmParticipant[]
+}
+
+model DmParticipant {
+  id             String         @id @default(uuid())
+  conversationId String
+  userId         String
+  unreadCount    Int            @default(0)
+
+  conversation   DmConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+}
+
+// -------------------------------------------------------------
+// 4. Voice Stage & Call Engine (Screens 6, 7)
+// -------------------------------------------------------------
+model VoiceRoom {
+  id           String             @id @default(uuid())
+  channelId    String             @unique
+  region       String             @default("Frankfurt Edge")
+  bitrateKbps  Int                @default(48) // Opus 48kHz HQ
+  isActive     Boolean            @default(true)
+
+  channel      Channel            @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  participants VoiceParticipant[]
+}
+
+model VoiceParticipant {
+  id          String    @id @default(uuid())
+  voiceRoomId String
+  userId      String
+  role        String    @default("Speaker") // "Host", "Speaker", "Audience"
+  isMuted     Boolean   @default(false)
+  isDeafened  Boolean   @default(false)
+  isSpeaking  Boolean   @default(false)
+  latencyMs   Int       @default(12)
+
+  voiceRoom   VoiceRoom @relation(fields: [voiceRoomId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([voiceRoomId, userId])
+}
+
+// -------------------------------------------------------------
+// 5. Explore & Early Access Waitlist (Screen 9)
+// -------------------------------------------------------------
+model WaitlistEntry {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  feature   String   // e.g. "explore_protocol_hubs", "dev_lounge"
+  notified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
