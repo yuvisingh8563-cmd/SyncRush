@@ -51,7 +51,15 @@ export class Database {
   }
 
   private async initCloudDatabase() {
-    const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.SUPABASE_DB_URL;
+    let dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.SUPABASE_DB_URL;
+    if (!dbUrl && process.env.DB_PASSWORD) {
+      const user = process.env.DB_USER || 'postgres';
+      const host = process.env.DB_HOST || 'localhost';
+      const port = process.env.DB_PORT || '5432';
+      const pass = encodeURIComponent(process.env.DB_PASSWORD);
+      const name = process.env.DB_NAME || 'syncrush';
+      dbUrl = `postgresql://${user}:${pass}@${host}:${port}/${name}`;
+    }
     if (!dbUrl) {
       console.log('📦 [Database] Operating in local file mode (data/syncpulse.json).');
       console.log('💡 [Database] Tip: Provide DATABASE_URL (Supabase/Neon/Render PostgreSQL) for permanent cloud persistence across server restarts.');
